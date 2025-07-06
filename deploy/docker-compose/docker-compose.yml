@@ -1,0 +1,86 @@
+services:
+  fsm_server:
+    build:
+      context: ../../
+      dockerfile: Dockerfile
+    image: fsm_server:latest
+    container_name: fsm_server
+    restart: always
+    depends_on:
+      - fsm_mysql
+      - fsm_redis
+    volumes:
+      - fsm_static:/fsm/backend/static
+    networks:
+      - fsm_network
+    command:
+      - bash
+      - -c
+      - |
+        wait-for-it -s fsm_mysql:3306 -s fsm_redis:6379 -t 300
+        supervisord -c /etc/supervisor/supervisord.conf
+        supervisorctl restart
+
+  fsm_mysql:
+    image: mysql:8.0.29
+    ports:
+      - "3306:3306"
+    container_name: fsm_mysql
+    restart: always
+    environment:
+      MYSQL_DATABASE: fsm
+      MYSQL_ROOT_PASSWORD: 123456
+      TZ: Asia/Shanghai
+    volumes:
+      - fsm_mysql:/var/lib/mysql
+    networks:
+      - fsm_network
+    command:
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --lower_case_table_names=1
+
+  fsm_redis:
+    image: redis:6.2.7
+    ports:
+      - "6379:6379"
+    container_name: fsm_redis
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - fsm_redis:/var/lib/redis
+    networks:
+      - fsm_network
+
+  fsm_nginx:
+    image: nginx:stable
+    ports:
+      - "8000:80"
+    container_name: fsm_nginx
+    restart: always
+    depends_on:
+      - fsm_server
+    volumes:
+      - ../nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - fsm_static:/www/fsm_server/backend/static
+    networks:
+      - fsm_network
+
+networks:
+  fsm_network:
+    name: fsm_network
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.10.10.0/24
+
+volumes:
+  fsm_mysql:
+    name: fsm_mysql
+  fsm_redis:
+    name: fsm_redis
+  fsm_static:
+    name: fsm_static
